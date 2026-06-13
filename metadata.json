@@ -1,0 +1,8 @@
+{
+  "name": "ALI3NATION",
+  "description": "Продвинутый VPN-клиент и менеджер конфигураций VLESS, Reality и TLS для обхода цензуры и защиты трафика.",
+  "requestFramePermissions": [
+    "camera"
+  ],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
