@@ -10,32 +10,39 @@ const fs = require("fs");
 let mainWindow = null;
 let serverInstance = null;
 
+// Force production environment
+process.env.NODE_ENV = 'production';
+
 // Resolve clean environment port
 const PORT = process.env.PORT || 3000;
 
 // Auto-launch Express Server process inside Electron Node Context
-function startExpressNative() {
+async function startExpressNative() {
   try {
     const serverPath = path.join(__dirname, "dist", "server.cjs");
     if (fs.existsSync(serverPath)) {
       console.log(`[ALI3NATION-CORE] Found built production backend at: ${serverPath}`);
       console.log(`[ALI3NATION-CORE] Booting Express server locally on port ${PORT}...`);
       serverInstance = require(serverPath);
+      
+      if (typeof serverInstance.startServer === 'function') {
+        const resolvedPort = await serverInstance.startServer(PORT);
+        console.log(`[ALI3NATION-CORE] Express started on confirmed port: ${resolvedPort}`);
+        return resolvedPort;
+      }
+      return PORT; // fallback
     } else {
       console.log("[ALI3NATION-CORE] Production server bundle not found. Trying to fallback to development runtime...");
-      // In local dev, we run of standard development
-      const devServerPath = path.join(__dirname, "server.ts");
-      if (fs.existsSync(devServerPath)) {
-        console.log(`[ALI3NATION-CORE] Dev server template ready. Assuming standard host port: ${PORT}`);
-      }
+      return PORT;
     }
   } catch (err) {
     console.error("[ALI3NATION-CORE] FAILED to start local Express integration server:", err.message);
+    return PORT;
   }
 }
 
-function createWindow() {
-  startExpressNative();
+async function createWindow() {
+  const actualPort = await startExpressNative();
 
   mainWindow = new BrowserWindow({
     width: 1280,
@@ -54,9 +61,27 @@ function createWindow() {
   });
 
   // Load local hosted application server
-  const loadAddress = `http://localhost:${PORT}`;
+  const loadAddress = `http://localhost:${actualPort}`;
   console.log(`[ALI3NATION-DESKTOP] Launching view pointing towards: ${loadAddress}`);
-  mainWindow.loadURL(loadAddress);
+  
+  const loadWithRetry = () => {
+    mainWindow.loadURL(loadAddress).catch(err => {
+      console.log(`[ALI3NATION-CORE] Failed to load ${loadAddress}: ${err.message}. Retrying in 500ms...`);
+      
+      // If we failed after 5+ tries or so, we could show an error, but let's just keep trying
+      // and maybe inject a loading message into the empty web contents
+      mainWindow.webContents.executeJavaScript(`document.body.innerHTML = "<div style='color:#fff;font-family:sans-serif;padding:20px'>Server loading: ${err.message}... Please wait...</div>";`);
+      
+      setTimeout(() => {
+        if (mainWindow) loadWithRetry();
+      }, 500);
+    });
+  };
+  
+  loadWithRetry();
+  
+  // Open devtools so we can see the console
+  mainWindow.webContents.openDevTools();
 
   // Prevent internal redirects from leaving electron frame; open hyperlinks in user's default browser!
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {

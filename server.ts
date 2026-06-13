@@ -530,26 +530,51 @@ app.post("/api/gemini/assist", async (req, res) => {
 });
 
 // Configure Vite integration for dev or production file serving
-async function start() {
-  if (process.env.NODE_ENV !== "production") {
-    console.log("Starting server in DEVELOPMENT mode with Vite Middleware...");
-    const vite = await createViteServer({
-      server: { middlewareMode: true },
-      appType: "spa",
-    });
-    app.use(vite.middlewares);
-  } else {
-    console.log("Starting server in PRODUCTION mode...");
-    const distPath = path.join(process.cwd(), 'dist');
-    app.use(express.static(distPath));
-    app.get('*', (req, res) => {
-      res.sendFile(path.join(distPath, 'index.html'));
-    });
-  }
+export async function startServer(forcePort?: number): Promise<number> {
+  return new Promise(async (resolve, reject) => {
+    if (process.env.NODE_ENV === "development" || (!process.env.NODE_ENV && process.argv.includes('--dev'))) {
+      console.log("Starting server in DEVELOPMENT mode with Vite Middleware...");
+      const vite = await createViteServer({
+        server: { middlewareMode: true },
+        appType: "spa",
+      });
+      app.use(vite.middlewares);
+    } else {
+      // Force production so electron bundle doesn't try to load Vite
+      process.env.NODE_ENV = "production";
+      console.log("Starting server in PRODUCTION mode...");
+      const distPath = __dirname;
+      console.log(`Setting static path to: ${distPath}`);
+      app.use(express.static(distPath));
+      app.get('*', (req, res) => {
+        res.sendFile(path.join(distPath, 'index.html'));
+      });
+    }
 
-  app.listen(PORT, "0.0.0.0", () => {
-    console.log(`ALI3NATION Backend running on http://0.0.0.0:${PORT}`);
+    const startPort = forcePort || PORT;
+    const server = app.listen(startPort, "0.0.0.0", () => {
+      console.log(`ALI3NATION Backend running on http://0.0.0.0:${startPort}`);
+      resolve(startPort);
+    });
+    
+    server.on('error', (e: any) => {
+      if (e.code === 'EADDRINUSE') {
+        console.log(`Port ${startPort} in use, retrying on random port...`);
+        setTimeout(() => {
+          app.listen(0, "0.0.0.0", function(this: any) {
+            const dynamicPort = this.address().port;
+            console.log(`ALI3NATION Backend running on fallback random port http://0.0.0.0:${dynamicPort}`);
+            resolve(dynamicPort);
+          });
+        }, 500);
+      } else {
+        reject(e);
+      }
+    });
   });
 }
 
-start();
+// Auto-start if not required as a module (e.g. running via tsx/node directly)
+if (require.main === module || process.env.NODE_ENV === 'development') {
+  startServer().catch(console.error);
+}
