@@ -124,6 +124,7 @@ class GameView(context: Context) : SurfaceView(context), SurfaceHolder.Callback,
     private val text = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
     }
+    private val audio = Audio(context)
     private val prefs = context.getSharedPreferences("bloodrush", Context.MODE_PRIVATE)
 
     init {
@@ -135,15 +136,19 @@ class GameView(context: Context) : SurfaceView(context), SurfaceHolder.Callback,
     // ---------------------------------------------------------------- lifecycle
 
     fun resumeGame() {
+        audio.startMusic()
         running = true
         if (surfaceReady && thread == null) startThread()
     }
 
     fun pauseGame() {
+        audio.pauseMusic()
         running = false
         thread?.join(500)
         thread = null
     }
+
+    fun releaseAudio() = audio.release()
 
     private fun startThread() {
         thread = Thread(this).also { it.start() }
@@ -300,6 +305,7 @@ class GameView(context: Context) : SurfaceView(context), SurfaceHolder.Callback,
                 if (p.kind == NUKE) {
                     nuke()
                 } else {
+                    audio.play("pickup"); audio.vibrate(30)
                     weapon = p.kind
                     weaponTime = 15f
                     addText(px, py - 30f * d, weaponName(weapon), Color.YELLOW)
@@ -328,6 +334,7 @@ class GameView(context: Context) : SurfaceView(context), SurfaceHolder.Callback,
             addText(w / 2f, h * 0.3f, "BOSS", Color.RED)
         }
         addText(w / 2f, h * 0.4f, "WAVE $wave", Color.WHITE)
+        audio.play("wave", 0.8f)
     }
 
     private fun edgePoint(): Pair<Float, Float> {
@@ -363,6 +370,7 @@ class GameView(context: Context) : SurfaceView(context), SurfaceHolder.Callback,
         when (weapon) {
             SHOTGUN -> {
                 fireCd = 0.6f
+                audio.play("shotgun"); audio.vibrate(30)
                 repeat(8) {
                     val a = aimAngle + (rnd.nextFloat() - 0.5f) * 0.5f
                     val s = speed * (0.7f + rnd.nextFloat() * 0.4f)
@@ -374,12 +382,14 @@ class GameView(context: Context) : SurfaceView(context), SurfaceHolder.Callback,
             }
             MINIGUN -> {
                 fireCd = 0.06f
+                audio.play("shot", 0.6f)
                 val a = aimAngle + (rnd.nextFloat() - 0.5f) * 0.14f
                 bullets.add(Bullet(ox, oy, cos(a) * speed, sin(a) * speed, 1f, 0.8f))
                 shake = max(shake, 2f)
             }
             else -> {
                 fireCd = 0.26f
+                audio.play("shot")
                 val a = aimAngle + (rnd.nextFloat() - 0.5f) * 0.04f
                 bullets.add(Bullet(ox, oy, cos(a) * speed, sin(a) * speed, 1.6f, 0.9f))
                 shake = max(shake, 2f)
@@ -407,6 +417,7 @@ class GameView(context: Context) : SurfaceView(context), SurfaceHolder.Callback,
                 hp -= z.dmg
                 hurtCd = 0.45f
                 hurtFlash = 1f
+                audio.play("hurt"); audio.vibrate(70)
                 shake = max(shake, 14f)
                 bloodBurst(px, py, 8, 120f * d, 3f * d)
                 splat(px, py, 14f * d)
@@ -443,6 +454,7 @@ class GameView(context: Context) : SurfaceView(context), SurfaceHolder.Callback,
                 if (hypot(z.x - b.x, z.y - b.y) < z.r * 14f * d) {
                     z.hp -= b.dmg
                     z.flash = 1f
+                    audio.play("hit", 0.7f)
                     val ang = atan2(b.vy, b.vx)
                     // Spray out the back of the target
                     for (k in 0 until 5) {
@@ -465,6 +477,7 @@ class GameView(context: Context) : SurfaceView(context), SurfaceHolder.Callback,
 
     private fun killZombie(z: Zombie, ang: Float) {
         kills++
+        audio.play("gib"); audio.vibrate(if (z.type == BOSS) 250 else 25)
         combo++
         comboTimer = 2.5f
         val gain = when (z.type) { WALKER -> 10; RUNNER -> 15; FATTY -> 40; else -> 500 } * max(1, combo / 3)
@@ -495,6 +508,7 @@ class GameView(context: Context) : SurfaceView(context), SurfaceHolder.Callback,
 
     private fun nuke() {
         addText(w / 2f, h / 2f, "BLOOD NOVA", Color.RED)
+        audio.play("nuke"); audio.vibrate(400)
         for (z in zombies) {
             z.hp = 0f
             for (i in 0 until 25) {
@@ -514,6 +528,7 @@ class GameView(context: Context) : SurfaceView(context), SurfaceHolder.Callback,
 
     private fun gameOver() {
         state = OVER
+        audio.play("death"); audio.vibrate(500)
         overTimer = 1.2f
         shake = 40f
         bloodBurst(px, py, 60, 600f * d, 4f * d)

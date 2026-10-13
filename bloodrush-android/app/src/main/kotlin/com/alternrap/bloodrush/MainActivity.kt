@@ -33,6 +33,11 @@ class MainActivity : Activity() {
         game.resumeGame()
     }
 
+    override fun onDestroy() {
+        super.onDestroy()
+        game.releaseAudio()
+    }
+
     override fun onPause() {
         super.onPause()
         game.pauseGame()
